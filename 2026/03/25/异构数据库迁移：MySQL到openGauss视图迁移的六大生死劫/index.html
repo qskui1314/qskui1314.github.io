@@ -1,0 +1,308 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>异构数据库迁移：MySQL到openGauss视图迁移的六大生死劫 | 邱的万花筒</title><meta name="author" content="旺仔邱邱糖"><meta name="copyright" content="旺仔邱邱糖"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="异构数据库迁移：MySQL到openGauss视图迁移的六大生死劫最近主导了一场极其硬核的底层架构升级，将一个背负了大量历史包袱的老系统从 MySQL 异构迁移至 openGauss (PostgreSQL 内核)。 在物理表结构和基础数据平安过境后，我天真地以为大功告成。结果在应用层启动拉取报表视图时，底层的强类型引擎直接给我来了一场“连环爆破”。几十个极其复杂的业务视图全军覆没，满屏的 ERR">
+<meta property="og:type" content="article">
+<meta property="og:title" content="异构数据库迁移：MySQL到openGauss视图迁移的六大生死劫">
+<meta property="og:url" content="https://blog.qskui.com/2026/03/25/%E5%BC%82%E6%9E%84%E6%95%B0%E6%8D%AE%E5%BA%93%E8%BF%81%E7%A7%BB%EF%BC%9AMySQL%E5%88%B0openGauss%E8%A7%86%E5%9B%BE%E8%BF%81%E7%A7%BB%E7%9A%84%E5%85%AD%E5%A4%A7%E7%94%9F%E6%AD%BB%E5%8A%AB/index.html">
+<meta property="og:site_name" content="邱的万花筒">
+<meta property="og:description" content="异构数据库迁移：MySQL到openGauss视图迁移的六大生死劫最近主导了一场极其硬核的底层架构升级，将一个背负了大量历史包袱的老系统从 MySQL 异构迁移至 openGauss (PostgreSQL 内核)。 在物理表结构和基础数据平安过境后，我天真地以为大功告成。结果在应用层启动拉取报表视图时，底层的强类型引擎直接给我来了一场“连环爆破”。几十个极其复杂的业务视图全军覆没，满屏的 ERR">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://blog.qskui.com/img/static/avatar.png">
+<meta property="article:published_time" content="2026-03-25T03:12:40.000Z">
+<meta property="article:modified_time" content="2026-03-26T08:04:19.873Z">
+<meta property="article:author" content="旺仔邱邱糖">
+<meta property="article:tag" content="MySQL">
+<meta property="article:tag" content="Open Gauss">
+<meta property="article:tag" content="Postgre SQL">
+<meta property="article:tag" content="视图">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://blog.qskui.com/img/static/avatar.png"><script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "异构数据库迁移：MySQL到openGauss视图迁移的六大生死劫",
+  "url": "https://blog.qskui.com/2026/03/25/%E5%BC%82%E6%9E%84%E6%95%B0%E6%8D%AE%E5%BA%93%E8%BF%81%E7%A7%BB%EF%BC%9AMySQL%E5%88%B0openGauss%E8%A7%86%E5%9B%BE%E8%BF%81%E7%A7%BB%E7%9A%84%E5%85%AD%E5%A4%A7%E7%94%9F%E6%AD%BB%E5%8A%AB/",
+  "image": "https://blog.qskui.com/img/static/avatar.png",
+  "datePublished": "2026-03-25T03:12:40.000Z",
+  "dateModified": "2026-03-26T08:04:19.873Z",
+  "author": [
+    {
+      "@type": "Person",
+      "name": "旺仔邱邱糖",
+      "url": "https://github.com/qskui1314"
+    }
+  ]
+}</script><link rel="shortcut icon" href="/img/favicon.png"><link rel="canonical" href="https://blog.qskui.com/2026/03/25/%E5%BC%82%E6%9E%84%E6%95%B0%E6%8D%AE%E5%BA%93%E8%BF%81%E7%A7%BB%EF%BC%9AMySQL%E5%88%B0openGauss%E8%A7%86%E5%9B%BE%E8%BF%81%E7%A7%BB%E7%9A%84%E5%85%AD%E5%A4%A7%E7%94%9F%E6%AD%BB%E5%8A%AB/index.html"><link rel="preconnect" href="//cdn.jsdelivr.net"/><link rel="preconnect" href="//hm.baidu.com"/><link rel="preconnect" href="//busuanzi.ibruce.info"/><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/node-snackbar/dist/snackbar.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          theme === 'dark' ? activateDarkMode() : theme === 'light' ? activateLightMode() : null
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement("script");
+  hm.src = "https://hm.baidu.com/hm.js?53a2ae44d82bb9bf87b8686edd44b5c8";
+  var s = document.getElementsByTagName("script")[0];
+  s.parentNode.insertBefore(hm, s);
+})();
+btf.addGlobalFn('pjaxComplete', () => {
+  _hmt.push(['_trackPageview',window.location.pathname])
+}, 'baidu_analytics')
+</script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.json","preload":false,"top_n_per_article":1,"unescape":true,"pagination":{"enable":false,"hitsPerPage":8},"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":150,"highlightFullpage":true,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: false,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":150,"languages":{"author":"作者: 旺仔邱邱糖","link":"链接: ","source":"来源: 邱的万花筒","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'null',
+  Snackbar: {"chs_to_cht":"已切换为繁体中文","cht_to_chs":"已切换为简体中文","day_to_night":"已切换为深色模式","night_to_day":"已切换为浅色模式","bgLight":"#49b1f5","bgDark":"#1f1f1f","position":"bottom-left"},
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: false,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: false
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: '异构数据库迁移：MySQL到openGauss视图迁移的六大生死劫',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><meta name="referrer" content="no-referrer-when-downgrade" /><meta name="generator" content="Hexo 7.3.0"></head><body><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/static/avatar.png" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">7</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">16</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">6</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><a class="site-page" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 归档</span></a></div><div class="menus_item"><a class="site-page" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签</span></a></div><div class="menus_item"><a class="site-page" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类</span></a></div><div class="menus_item"><a class="site-page" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg fixed" id="page-header"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><span class="site-name">邱的万花筒</span></a><a class="nav-page-title" href="/"><span class="site-name">异构数据库迁移：MySQL到openGauss视图迁移的六大生死劫</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><a class="site-page" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 归档</span></a></div><div class="menus_item"><a class="site-page" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签</span></a></div><div class="menus_item"><a class="site-page" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类</span></a></div><div class="menus_item"><a class="site-page" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于</span></a></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">异构数据库迁移：MySQL到openGauss视图迁移的六大生死劫</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-03-25T03:12:40.000Z" title="发表于 2026-03-25 11:12:40">2026-03-25</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-03-26T08:04:19.873Z" title="更新于 2026-03-26 16:04:19">2026-03-26</time></span><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E6%95%B0%E6%8D%AE%E5%BA%93/">数据库</a></span></div><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-wordcount"><i class="far fa-file-word fa-fw post-meta-icon"></i><span class="post-meta-label">总字数:</span><span class="word-count">1.6k</span><span class="post-meta-separator">|</span><i class="far fa-clock fa-fw post-meta-icon"></i><span class="post-meta-label">阅读时长:</span><span>5分钟</span></span><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title=""><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><div id="post-outdate-notice" data="{&quot;limitDay&quot;:30,&quot;messagePrev&quot;:&quot;已经过了&quot;,&quot;messageNext&quot;:&quot;天自上次更新，文章内容可能已过时。&quot;,&quot;postUpdate&quot;:&quot;2026-03-26 16:04:19&quot;}" hidden></div><h1 id="异构数据库迁移：MySQL到openGauss视图迁移的六大生死劫"><a href="#异构数据库迁移：MySQL到openGauss视图迁移的六大生死劫" class="headerlink" title="异构数据库迁移：MySQL到openGauss视图迁移的六大生死劫"></a>异构数据库迁移：MySQL到openGauss视图迁移的六大生死劫</h1><p>最近主导了一场极其硬核的底层架构升级，将一个背负了大量历史包袱的老系统从 MySQL 异构迁移至 openGauss (PostgreSQL 内核)。</p>
+<p>在物理表结构和基础数据平安过境后，我天真地以为大功告成。结果在应用层启动拉取报表视图时，底层的强类型引擎直接给我来了一场“连环爆破”。几十个极其复杂的业务视图全军覆没，满屏的 <code>ERROR</code> 简直触目惊心。</p>
+<p>在此，我将这次踩过的坑、流过的汗以及最终的架构级降维破局方案记录下来。如果你也正在经历向 PG 系数据库的异构迁移，这篇实战总结或许能帮你少走几个星期的弯路。</p>
+<hr>
+<h2 id="坑位一：MySQL-“方言”函数的大面积排异"><a href="#坑位一：MySQL-“方言”函数的大面积排异" class="headerlink" title="坑位一：MySQL “方言”函数的大面积排异"></a>坑位一：MySQL “方言”函数的大面积排异</h2><h3 id="1-案发现场与报错信息"><a href="#1-案发现场与报错信息" class="headerlink" title="1. 案发现场与报错信息"></a>1. 案发现场与报错信息</h3><p>迁移工具极其偷懒，直接把原生的 MySQL 函数生搬硬套到了 openGauss 中，导致视图在编译时直接熔断：</p>
+<ol>
+<li><code>ERROR: function date_format(text, text) does not exist</code></li>
+<li><code>ERROR: function substring_index(text, unknown, numeric) does not exist</code></li>
+<li>聚合函数 <code>group_concat</code> 无法识别。</li>
+<li>正则表达式 <code>&quot;regexp&quot;()</code> 报错无此函数。</li>
+</ol>
+<h3 id="2-底层真相与破局方案"><a href="#2-底层真相与破局方案" class="headerlink" title="2. 底层真相与破局方案"></a>2. 底层真相与破局方案</h3><p>PostgreSQL 拥有极其严苛的国际标准语法，根本不认识 MySQL 的私有方言。必须手动对视图源码进行外科手术式的清洗。</p>
+<ol>
+<li><strong>时间掩码转换</strong>：将 <code>date_format(时间字段, &#39;%Y%m%d&#39;)</code> 彻底重构为 <code>to_char(时间字段::timestamp, &#39;YYYYMMDD&#39;)</code>。</li>
+<li><strong>字符串切割</strong>：抛弃极其低效的 <code>substring_index</code> 嵌套，直接拥抱原生流式处理函数 <code>split_part(字段, &#39;分隔符&#39;, 索引号)</code>。</li>
+<li><strong>字符串聚合</strong>：将 <code>group_concat</code> 替换为强大且严谨的 <code>string_agg(字段::text, &#39;分隔符&#39; ORDER BY 排序字段)</code>。</li>
+<li><strong>正则匹配</strong>：废弃函数调用，直接使用极其生猛的原生波浪号正则匹配符 <code>字段::text ~ &#39;[a-zA-Z0-9]&#39;</code>。</li>
+</ol>
+<hr>
+<h2 id="坑位二：极其奔放的空字符串引发“类型熔断”"><a href="#坑位二：极其奔放的空字符串引发“类型熔断”" class="headerlink" title="坑位二：极其奔放的空字符串引发“类型熔断”"></a>坑位二：极其奔放的空字符串引发“类型熔断”</h2><h3 id="1-案发现场与报错信息-1"><a href="#1-案发现场与报错信息-1" class="headerlink" title="1. 案发现场与报错信息"></a>1. 案发现场与报错信息</h3><p>在验证视图时，引擎当场将查询击毙：<br><code>ERROR: invalid input syntax for type double precision: &quot; &quot;</code><br><code>ERROR: invalid input syntax for type timestamp: &quot; &quot;</code></p>
+<h3 id="2-底层真相与破局方案-1"><a href="#2-底层真相与破局方案-1" class="headerlink" title="2. 底层真相与破局方案"></a>2. 底层真相与破局方案</h3><p>这是 MySQL 与 PG 在底层哲学上的巨大鸿沟。在 MySQL 中，如果时间或数字字段里存了一个空字符串 <code>&quot;&quot;</code> 甚至纯空格 <code>&quot; &quot;</code>，它会默默隐式转换为 <code>0</code> 或 <code>0000-00-00</code>。但在军工级强类型的 openGauss 中，纯空格强转数字或时间必定触发内核崩溃。</p>
+<p><strong>终极防腐墙战术</strong>：在强转之前，加装 <code>NULLIF</code> 和 <code>trim</code> 护甲。</p>
+<figure class="highlight sql"><table><tr><td class="code"><pre><span class="line"><span class="comment">-- 重构前的剧毒代码</span></span><br><span class="line">to_char(历史字段::<span class="type">timestamp</span>, <span class="string">&#x27;YYYYMMDD&#x27;</span>) </span><br><span class="line"></span><br><span class="line"><span class="comment">-- 重构后的防弹代码：先剔除空格，再转为合法 NULL</span></span><br><span class="line">to_char(<span class="built_in">NULLIF</span>(<span class="built_in">trim</span>(历史字段::text), <span class="string">&#x27;&#x27;</span>)::<span class="type">timestamp</span>, <span class="string">&#x27;YYYYMMDD&#x27;</span>)</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h2 id="坑位三：UNION-ALL-上下文的“强类型对齐”防线"><a href="#坑位三：UNION-ALL-上下文的“强类型对齐”防线" class="headerlink" title="坑位三：UNION ALL 上下文的“强类型对齐”防线"></a>坑位三：UNION ALL 上下文的“强类型对齐”防线</h2><h3 id="1-案发现场与报错信息-2"><a href="#1-案发现场与报错信息-2" class="headerlink" title="1. 案发现场与报错信息"></a>1. 案发现场与报错信息</h3><p>复杂的跨表视图创建失败：<br><code>ERROR: UNION types integer and text cannot be matched</code></p>
+<h3 id="2-底层真相与破局方案-2"><a href="#2-底层真相与破局方案-2" class="headerlink" title="2. 底层真相与破局方案"></a>2. 底层真相与破局方案</h3><p>MySQL 允许你在 <code>UNION ALL</code> 中将上半段的文本与下半段的整数直接拼接，底层会自动转成字符串。而在 openGauss 中，参与 <code>UNION ALL</code> 的每一列，上下必须保持绝对严格的物理类型一致。</p>
+<p>破局方案：在最外层的 <code>SELECT</code> 中，对每一个极易产生冲突的字段进行极其残暴的显式降维强转。</p>
+<figure class="highlight sql"><table><tr><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> </span><br><span class="line">    字段A::text <span class="keyword">AS</span> field_a,</span><br><span class="line">    <span class="built_in">COALESCE</span>(字段B, <span class="number">0</span>)::<span class="type">bigint</span> <span class="keyword">AS</span> field_b</span><br><span class="line"><span class="keyword">FROM</span> 表<span class="number">1</span></span><br><span class="line"><span class="keyword">UNION</span> <span class="keyword">ALL</span></span><br><span class="line"><span class="keyword">SELECT</span> </span><br><span class="line">    字段C::text <span class="keyword">AS</span> field_a,</span><br><span class="line">    字段D::<span class="type">bigint</span> <span class="keyword">AS</span> field_b</span><br><span class="line"><span class="keyword">FROM</span> 表<span class="number">2</span></span><br></pre></td></tr></table></figure>
+
+<hr>
+<h2 id="坑位四：兼容插件-dolphin-残留与非标类型"><a href="#坑位四：兼容插件-dolphin-残留与非标类型" class="headerlink" title="坑位四：兼容插件 dolphin 残留与非标类型"></a>坑位四：兼容插件 dolphin 残留与非标类型</h2><h3 id="1-案发现场与报错信息-3"><a href="#1-案发现场与报错信息-3" class="headerlink" title="1. 案发现场与报错信息"></a>1. 案发现场与报错信息</h3><p><code>ERROR: schema &quot;dolphin_catalog&quot; does not exist</code><br><code>ERROR: type &quot;uint8&quot; does not exist</code></p>
+<ol start="2">
+<li>底层真相与破局方案<br>导出工具试图保留 MySQL 的特性，强行注入了 <code>OPERATOR(dolphin_catalog.+)</code> 这种插件算子和 <code>uint8</code> 这种 C 语言底层的无符号类型。如果生产库没开兼容插件，这些残留就是定时炸弹。</li>
+</ol>
+<p>破局方案：彻底粉碎非标方言。将 <code>uint8</code> 重构为标准的 <code>integer</code> 或 <code>bigint</code>。将插件算子恢复为最纯正的标准数学运算符（如 <code>+</code>、<code>-</code>）。</p>
+<hr>
+<h2 id="坑位五：OR-REPLACE-的“类型契约防篡改”死锁"><a href="#坑位五：OR-REPLACE-的“类型契约防篡改”死锁" class="headerlink" title="坑位五：OR REPLACE 的“类型契约防篡改”死锁"></a>坑位五：OR REPLACE 的“类型契约防篡改”死锁</h2><h3 id="1-案发现场与报错信息-4"><a href="#1-案发现场与报错信息-4" class="headerlink" title="1. 案发现场与报错信息"></a>1. 案发现场与报错信息</h3><p>在修改视图纠正上述错误时，再次被拦截：<br>｀ERROR: cannot change data type of view column “字段名” from bigint to integer｀</p>
+<h2 id="2-底层真相与破局方案-3"><a href="#2-底层真相与破局方案-3" class="headerlink" title="2. 底层真相与破局方案"></a>2. 底层真相与破局方案</h2><p>在 PG 内核中，<code>CREATE OR REPLACE VIEW</code> 有一个铁律：可以往视图最后追加新字段，但绝对不允许修改现有字段的名字和数据类型！只要新旧类型不匹配，当场锁定。</p>
+<p>破局战术有两条：</p>
+<ol>
+<li><p>向历史妥协：将新修改的字段显式强转回旧视图的类型（例如 <code>字段名::bigint</code>）。</p>
+</li>
+<li><p>釜底抽薪（推荐）：如果旧视图的类型本身就是错的，直接动用级联爆破指令清场，在废墟上重建！</p>
+</li>
+</ol>
+<figure class="highlight sql"><table><tr><td class="code"><pre><span class="line"><span class="keyword">DROP</span> <span class="keyword">VIEW</span> IF <span class="keyword">EXISTS</span> 您的视图名 CASCADE;</span><br><span class="line"><span class="keyword">CREATE</span> <span class="keyword">VIEW</span> 您的视图名 <span class="keyword">AS</span> ...</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h2 id="坑位六：笛卡尔积灾难与原生序列引擎的降维打击"><a href="#坑位六：笛卡尔积灾难与原生序列引擎的降维打击" class="headerlink" title="坑位六：笛卡尔积灾难与原生序列引擎的降维打击"></a>坑位六：笛卡尔积灾难与原生序列引擎的降维打击</h2><h3 id="1-案发现场与报错信息-5"><a href="#1-案发现场与报错信息-5" class="headerlink" title="1. 案发现场与报错信息"></a>1. 案发现场与报错信息</h3><p>老代码里充斥着长达几十行的 <code>SELECT 0 UNION ALL SELECT 1...</code> 拼装交叉相乘，只为了生成一个 1 到 100 的序号表来切割字符串，代码极其臃肿，运行效率极低。</p>
+<h3 id="2-底层真相与破局方案-4"><a href="#2-底层真相与破局方案-4" class="headerlink" title="2. 底层真相与破局方案"></a>2. 底层真相与破局方案</h3><p>MySQL 早期由于缺乏序列生成器，开发者只能出此下策。既然来到了 PostgreSQL 的地盘，就必须动用底层 C 语言级的杀手锏引擎 <code>generate_series</code>。</p>
+<p><strong>破局方案</strong>：将成百上千行的笛卡尔积 UNION 代码，一剑封喉地替换为一行原生代码。</p>
+<figure class="highlight sql"><table><tr><td class="code"><pre><span class="line"><span class="comment">-- 一键在内存中虚拟出 1 到 100 的连续序列号，百倍性能碾压</span></span><br><span class="line"><span class="keyword">JOIN</span> (<span class="keyword">SELECT</span> generate_series(<span class="number">1</span>, <span class="number">100</span>) <span class="keyword">AS</span> n) numbers <span class="keyword">ON</span> ...</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>经历过这次洗礼，我深切体会到了底层框架选型的深远影响。MySQL 的“奔放与包容”在敏捷开发时代能让人爽快地写出代码，但也埋下了大量隐式转换的技术债务。而 openGauss (PostgreSQL) 的“铁血与严苛”，虽然在迁移初期会让人痛不欲生，但只要跨过了这道强类型防腐墙，系统未来的稳定性与查询性能将获得真正的降维级提升。</p>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a target="_blank" rel="noopener" href="https://github.com/qskui1314">旺仔邱邱糖</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://blog.qskui.com/2026/03/25/%E5%BC%82%E6%9E%84%E6%95%B0%E6%8D%AE%E5%BA%93%E8%BF%81%E7%A7%BB%EF%BC%9AMySQL%E5%88%B0openGauss%E8%A7%86%E5%9B%BE%E8%BF%81%E7%A7%BB%E7%9A%84%E5%85%AD%E5%A4%A7%E7%94%9F%E6%AD%BB%E5%8A%AB/">https://blog.qskui.com/2026/03/25/异构数据库迁移：MySQL到openGauss视图迁移的六大生死劫/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://blog.qskui.com" target="_blank">邱的万花筒</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/MySQL/">MySQL</a><a class="post-meta__tags" href="/tags/Open-Gauss/">Open Gauss</a><a class="post-meta__tags" href="/tags/Postgre-SQL/">Postgre SQL</a><a class="post-meta__tags" href="/tags/%E8%A7%86%E5%9B%BE/">视图</a></div></div><div class="post-reward"><div class="reward-button"><i class="fas fa-qrcode"></i>如果觉得本文对你有帮助，可以考虑赞助我以支持我的创作，领个支付宝红包也可以！</div><div class="reward-main"><ul class="reward-all"><li class="reward-item"><a href="/img/static/alipayRefer.jpg" target="_blank"><img class="post-qr-code-img" src="/img/static/alipayRefer.jpg" alt="领支付宝红包"/></a><div class="post-qr-code-desc">领支付宝红包</div></li><li class="reward-item"><a href="/img/static/alipay.jpg" target="_blank"><img class="post-qr-code-img" src="/img/static/alipay.jpg" alt="支付宝赞助"/></a><div class="post-qr-code-desc">支付宝赞助</div></li></ul></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/03/18/CAS%20%E7%99%BB%E5%BD%95%E9%A1%B5%E9%9D%A2%20500%20%E9%94%99%E8%AF%AF%E6%8E%92%E6%9F%A5%E5%AE%9E%E5%BD%95%EF%BC%9A%E4%B8%80%E6%AC%A1%E5%85%B8%E5%9E%8B%E7%9A%84%20Tomcat%20TLD%20%E6%89%AB%E6%8F%8F%E9%97%AE%E9%A2%98/" title="CAS 登录页面 500 错误排查实录：一次典型的 Tomcat TLD 扫描问题"><div class="cover" style="background: var(--default-bg-color)"></div><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">CAS 登录页面 500 错误排查实录：一次典型的 Tomcat TLD 扫描问题</div></div><div class="info-2"><div class="info-item-1">CAS 登录页面 500 错误排查实录：一次典型的 Tomcat TLD 扫描问题 问题摘要：部署在 Docker 容器中的 CAS 单点登录系统启动后，访问登录页面时报 HTTP 500 错误...</div></div></div></a><a class="pagination-related" href="/2026/03/25/%E5%BC%82%E6%9E%84%E6%95%B0%E6%8D%AE%E5%BA%93%E8%BF%81%E7%A7%BB%EF%BC%9AMySQL%E5%AD%98%E5%82%A8%E8%BF%87%E7%A8%8B%E8%BF%81%E7%A7%BB%E8%87%B3openGauss%E7%9A%84%E8%A1%80%E6%B3%AA%E6%80%BB%E7%BB%93/" title="异构数据库迁移：MySQL存储过程迁移至openGauss的血泪总结"><div class="cover" style="background: var(--default-bg-color)"></div><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">异构数据库迁移：MySQL存储过程迁移至openGauss的血泪总结</div></div><div class="info-2"><div class="info-item-1">异构数据库迁移：MySQL 存储过程迁移至 openGauss 的血泪总结作为一名老兵，最近在处理某管理系统的国产化适配，将几十个核心存储过程从 MySQL 搬到 openGauss（基于 Po...</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/03/25/%E5%BC%82%E6%9E%84%E6%95%B0%E6%8D%AE%E5%BA%93%E8%BF%81%E7%A7%BB%EF%BC%9AMySQL%E5%AD%98%E5%82%A8%E8%BF%87%E7%A8%8B%E8%BF%81%E7%A7%BB%E8%87%B3openGauss%E7%9A%84%E8%A1%80%E6%B3%AA%E6%80%BB%E7%BB%93/" title="异构数据库迁移：MySQL存储过程迁移至openGauss的血泪总结"><div class="cover" style="background: var(--default-bg-color)"></div><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-03-25</div><div class="info-item-2">异构数据库迁移：MySQL存储过程迁移至openGauss的血泪总结</div></div><div class="info-2"><div class="info-item-1">异构数据库迁移：MySQL 存储过程迁移至 openGauss 的血泪总结作为一名老兵，最近在处理某管理系统的国产化适配，将几十个核心存储过程从 MySQL 搬到 openGauss（基于 Po...</div></div></div></a><a class="pagination-related" href="/2025/11/19/%E9%85%8D%E7%BD%AEMySQL%E6%97%A5%E5%BF%97%E5%AE%A1%E8%AE%A1%E8%BD%AC%E5%8F%91/" title="Linux配置MySQL日志审计转发"><div class="cover" style="background: var(--default-bg-color)"></div><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-11-19</div><div class="info-item-2">Linux配置MySQL日志审计转发</div></div><div class="info-2"><div class="info-item-1">Linux服务器配置MySQL日志审计 编辑配置文件  vi /etc/rsyslog.conf   添加转发规则： 在文件末尾添加以下行（二选一）：  使用 UDP 协议 (最常见)：*.* ...</div></div></div></a></div></div><hr class="custom-hr"/><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="card-widget card-info text-center"><div class="avatar-img"><img src="/img/static/avatar.png" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="author-info-name">旺仔邱邱糖</div><div class="author-info-description">分享所见所闻，记录生活点滴</div><div class="site-data"><a href="/archives/"><div class="headline">文章</div><div class="length-num">7</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">16</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">6</div></a></div><a id="card-info-btn" target="_blank" rel="noopener" href="https://github.com/qskui1314"><i class="fab fa-github"></i><span>Follow Me</span></a><div class="card-info-social-icons"><a class="social-icon" href="https://github.com/qskui1314" target="_blank" title="Github"><i class="fab fa-github" style="color: #hdhfbb;"></i></a><a class="social-icon" href="mailto:qskui1314@gmail.com" target="_blank" title="Email"><i class="fas fa-envelope" style="color: #000000;"></i></a></div></div><div class="card-widget card-announcement"><div class="item-headline"><i class="fas fa-bullhorn fa-shake"></i><span>公告</span></div><div class="announcement_content">如果你在使用中遇到问题，请到 Github Issues 进行反馈</div></div><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link" href="#%E5%BC%82%E6%9E%84%E6%95%B0%E6%8D%AE%E5%BA%93%E8%BF%81%E7%A7%BB%EF%BC%9AMySQL%E5%88%B0openGauss%E8%A7%86%E5%9B%BE%E8%BF%81%E7%A7%BB%E7%9A%84%E5%85%AD%E5%A4%A7%E7%94%9F%E6%AD%BB%E5%8A%AB"><span class="toc-number">1.</span> <span class="toc-text">异构数据库迁移：MySQL到openGauss视图迁移的六大生死劫</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9D%91%E4%BD%8D%E4%B8%80%EF%BC%9AMySQL-%E2%80%9C%E6%96%B9%E8%A8%80%E2%80%9D%E5%87%BD%E6%95%B0%E7%9A%84%E5%A4%A7%E9%9D%A2%E7%A7%AF%E6%8E%92%E5%BC%82"><span class="toc-number">1.1.</span> <span class="toc-text">坑位一：MySQL “方言”函数的大面积排异</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-%E6%A1%88%E5%8F%91%E7%8E%B0%E5%9C%BA%E4%B8%8E%E6%8A%A5%E9%94%99%E4%BF%A1%E6%81%AF"><span class="toc-number">1.1.1.</span> <span class="toc-text">1. 案发现场与报错信息</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-%E5%BA%95%E5%B1%82%E7%9C%9F%E7%9B%B8%E4%B8%8E%E7%A0%B4%E5%B1%80%E6%96%B9%E6%A1%88"><span class="toc-number">1.1.2.</span> <span class="toc-text">2. 底层真相与破局方案</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9D%91%E4%BD%8D%E4%BA%8C%EF%BC%9A%E6%9E%81%E5%85%B6%E5%A5%94%E6%94%BE%E7%9A%84%E7%A9%BA%E5%AD%97%E7%AC%A6%E4%B8%B2%E5%BC%95%E5%8F%91%E2%80%9C%E7%B1%BB%E5%9E%8B%E7%86%94%E6%96%AD%E2%80%9D"><span class="toc-number">1.2.</span> <span class="toc-text">坑位二：极其奔放的空字符串引发“类型熔断”</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-%E6%A1%88%E5%8F%91%E7%8E%B0%E5%9C%BA%E4%B8%8E%E6%8A%A5%E9%94%99%E4%BF%A1%E6%81%AF-1"><span class="toc-number">1.2.1.</span> <span class="toc-text">1. 案发现场与报错信息</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-%E5%BA%95%E5%B1%82%E7%9C%9F%E7%9B%B8%E4%B8%8E%E7%A0%B4%E5%B1%80%E6%96%B9%E6%A1%88-1"><span class="toc-number">1.2.2.</span> <span class="toc-text">2. 底层真相与破局方案</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9D%91%E4%BD%8D%E4%B8%89%EF%BC%9AUNION-ALL-%E4%B8%8A%E4%B8%8B%E6%96%87%E7%9A%84%E2%80%9C%E5%BC%BA%E7%B1%BB%E5%9E%8B%E5%AF%B9%E9%BD%90%E2%80%9D%E9%98%B2%E7%BA%BF"><span class="toc-number">1.3.</span> <span class="toc-text">坑位三：UNION ALL 上下文的“强类型对齐”防线</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-%E6%A1%88%E5%8F%91%E7%8E%B0%E5%9C%BA%E4%B8%8E%E6%8A%A5%E9%94%99%E4%BF%A1%E6%81%AF-2"><span class="toc-number">1.3.1.</span> <span class="toc-text">1. 案发现场与报错信息</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-%E5%BA%95%E5%B1%82%E7%9C%9F%E7%9B%B8%E4%B8%8E%E7%A0%B4%E5%B1%80%E6%96%B9%E6%A1%88-2"><span class="toc-number">1.3.2.</span> <span class="toc-text">2. 底层真相与破局方案</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9D%91%E4%BD%8D%E5%9B%9B%EF%BC%9A%E5%85%BC%E5%AE%B9%E6%8F%92%E4%BB%B6-dolphin-%E6%AE%8B%E7%95%99%E4%B8%8E%E9%9D%9E%E6%A0%87%E7%B1%BB%E5%9E%8B"><span class="toc-number">1.4.</span> <span class="toc-text">坑位四：兼容插件 dolphin 残留与非标类型</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-%E6%A1%88%E5%8F%91%E7%8E%B0%E5%9C%BA%E4%B8%8E%E6%8A%A5%E9%94%99%E4%BF%A1%E6%81%AF-3"><span class="toc-number">1.4.1.</span> <span class="toc-text">1. 案发现场与报错信息</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9D%91%E4%BD%8D%E4%BA%94%EF%BC%9AOR-REPLACE-%E7%9A%84%E2%80%9C%E7%B1%BB%E5%9E%8B%E5%A5%91%E7%BA%A6%E9%98%B2%E7%AF%A1%E6%94%B9%E2%80%9D%E6%AD%BB%E9%94%81"><span class="toc-number">1.5.</span> <span class="toc-text">坑位五：OR REPLACE 的“类型契约防篡改”死锁</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-%E6%A1%88%E5%8F%91%E7%8E%B0%E5%9C%BA%E4%B8%8E%E6%8A%A5%E9%94%99%E4%BF%A1%E6%81%AF-4"><span class="toc-number">1.5.1.</span> <span class="toc-text">1. 案发现场与报错信息</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#2-%E5%BA%95%E5%B1%82%E7%9C%9F%E7%9B%B8%E4%B8%8E%E7%A0%B4%E5%B1%80%E6%96%B9%E6%A1%88-3"><span class="toc-number">1.6.</span> <span class="toc-text">2. 底层真相与破局方案</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9D%91%E4%BD%8D%E5%85%AD%EF%BC%9A%E7%AC%9B%E5%8D%A1%E5%B0%94%E7%A7%AF%E7%81%BE%E9%9A%BE%E4%B8%8E%E5%8E%9F%E7%94%9F%E5%BA%8F%E5%88%97%E5%BC%95%E6%93%8E%E7%9A%84%E9%99%8D%E7%BB%B4%E6%89%93%E5%87%BB"><span class="toc-number">1.7.</span> <span class="toc-text">坑位六：笛卡尔积灾难与原生序列引擎的降维打击</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-%E6%A1%88%E5%8F%91%E7%8E%B0%E5%9C%BA%E4%B8%8E%E6%8A%A5%E9%94%99%E4%BF%A1%E6%81%AF-5"><span class="toc-number">1.7.1.</span> <span class="toc-text">1. 案发现场与报错信息</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-%E5%BA%95%E5%B1%82%E7%9C%9F%E7%9B%B8%E4%B8%8E%E7%A0%B4%E5%B1%80%E6%96%B9%E6%A1%88-4"><span class="toc-number">1.7.2.</span> <span class="toc-text">2. 底层真相与破局方案</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%80%BB%E7%BB%93"><span class="toc-number">1.8.</span> <span class="toc-text">总结</span></a></li></ol></li></ol></div></div><div class="card-widget card-recent-post"><div class="item-headline"><i class="fas fa-history"></i><span>最新文章</span></div><div class="aside-list"><div class="aside-list-item no-cover"><div class="content"><a class="title" href="/2026/03/26/%E9%81%BF%E5%9D%91%E6%8C%87%E5%8D%97%EF%BC%9A%E6%96%B0%E6%9C%8D%E5%8A%A1%E5%99%A8%E5%88%9D%E5%A7%8B%E5%8C%96%E5%BF%85%E5%81%9A%E7%9A%84%E4%BA%94%E6%AD%A5%E6%B3%95/" title="避坑指南：新服务器初始化必做的五步法">避坑指南：新服务器初始化必做的五步法</a><time datetime="2026-03-26T07:53:32.000Z" title="发表于 2026-03-26 15:53:32">2026-03-26</time></div></div><div class="aside-list-item no-cover"><div class="content"><a class="title" href="/2026/03/25/%E5%BC%82%E6%9E%84%E6%95%B0%E6%8D%AE%E5%BA%93%E8%BF%81%E7%A7%BB%EF%BC%9AMySQL%E5%AD%98%E5%82%A8%E8%BF%87%E7%A8%8B%E8%BF%81%E7%A7%BB%E8%87%B3openGauss%E7%9A%84%E8%A1%80%E6%B3%AA%E6%80%BB%E7%BB%93/" title="异构数据库迁移：MySQL存储过程迁移至openGauss的血泪总结">异构数据库迁移：MySQL存储过程迁移至openGauss的血泪总结</a><time datetime="2026-03-25T07:39:22.000Z" title="发表于 2026-03-25 15:39:22">2026-03-25</time></div></div><div class="aside-list-item no-cover"><div class="content"><a class="title" href="/2026/03/25/%E5%BC%82%E6%9E%84%E6%95%B0%E6%8D%AE%E5%BA%93%E8%BF%81%E7%A7%BB%EF%BC%9AMySQL%E5%88%B0openGauss%E8%A7%86%E5%9B%BE%E8%BF%81%E7%A7%BB%E7%9A%84%E5%85%AD%E5%A4%A7%E7%94%9F%E6%AD%BB%E5%8A%AB/" title="异构数据库迁移：MySQL到openGauss视图迁移的六大生死劫">异构数据库迁移：MySQL到openGauss视图迁移的六大生死劫</a><time datetime="2026-03-25T03:12:40.000Z" title="发表于 2026-03-25 11:12:40">2026-03-25</time></div></div><div class="aside-list-item no-cover"><div class="content"><a class="title" href="/2026/03/18/CAS%20%E7%99%BB%E5%BD%95%E9%A1%B5%E9%9D%A2%20500%20%E9%94%99%E8%AF%AF%E6%8E%92%E6%9F%A5%E5%AE%9E%E5%BD%95%EF%BC%9A%E4%B8%80%E6%AC%A1%E5%85%B8%E5%9E%8B%E7%9A%84%20Tomcat%20TLD%20%E6%89%AB%E6%8F%8F%E9%97%AE%E9%A2%98/" title="CAS 登录页面 500 错误排查实录：一次典型的 Tomcat TLD 扫描问题">CAS 登录页面 500 错误排查实录：一次典型的 Tomcat TLD 扫描问题</a><time datetime="2026-03-18T02:55:51.000Z" title="发表于 2026-03-18 10:55:51">2026-03-18</time></div></div><div class="aside-list-item no-cover"><div class="content"><a class="title" href="/2025/11/19/%E9%85%8D%E7%BD%AEMySQL%E6%97%A5%E5%BF%97%E5%AE%A1%E8%AE%A1%E8%BD%AC%E5%8F%91/" title="Linux配置MySQL日志审计转发">Linux配置MySQL日志审计转发</a><time datetime="2025-11-19T08:30:00.000Z" title="发表于 2025-11-19 16:30:00">2025-11-19</time></div></div></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 旺仔邱邱糖</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="noopener" href="https://hexo.io">Hexo 7.3.0</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.5.2</a></span></div></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><button id="darkmode" type="button" title="日间和夜间模式切换"><i class="fas fa-adjust"></i></button><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/instant.page/instantpage.min.js" type="module"></script><script src="https://cdn.jsdelivr.net/npm/node-snackbar/dist/snackbar.min.js"></script><div class="js-pjax"><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = {"mapping":"pathname","crossorigin":"anonymous"}
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'qskui1314/qskui1314.github.io',
+      'data-repo-id': 'R_kgDOPkRGiA',
+      'data-category-id': 'DIC_kwDOPkRGiM4CumGi',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme)
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !false) {
+    if (false) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><script async data-pjax src="/"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><i class="fas fa-spinner fa-pulse" id="loading-status" hidden="hidden"></i><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="local-search-input"><input placeholder="搜索文章" type="text"/></div><hr/><div id="local-search-results"></div><div class="ais-Pagination" id="local-search-pagination" style="display:none;"><ul class="ais-Pagination-list"></ul></div><div id="local-search-stats"></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div><!-- hexo injector body_end start -->
+  <script defer src="/js/ArticleTimelinessReminder.js"></script>
+<!-- hexo injector body_end end --></body></html>
